@@ -2,7 +2,7 @@ import pathlib
 import sqlite3
 import threading
 from datetime import datetime
-from queue import Empty, Queue
+from queue import Queue, Empty
 from typing import List, Optional
 
 import numpy as np
@@ -12,7 +12,6 @@ from tqdm import tqdm
 from dtw import dtw
 
 
-# 既存のモデル
 class StoneData(BaseModel):
     x: float
     y: float
@@ -29,7 +28,6 @@ class ResultData(BaseModel):
     path_smoothness: float
 
 
-# 新規モデル
 class WorkItem(BaseModel):
     trajectory_idx1: int
     trajectory_idx2: int
@@ -167,6 +165,9 @@ class ParallelDTW:
     def writer_function(self):
         """書き込みスレッドのメイン関数"""
         with sqlite3.connect(self.db_path) as conn:
+            batch_count = 0
+            results_buffer = []
+
             while not self.stop_flag.is_set() or not (
                 self.result_queue.empty() and self.error_queue.empty()
             ):
@@ -174,24 +175,45 @@ class ParallelDTW:
                 try:
                     while True:
                         result = self.result_queue.get_nowait()
-                        conn.execute(
-                            """
-                            INSERT INTO results 
-                            (data_num1, data_num2, distance, path_quality, path_smoothness)
-                            VALUES (?, ?, ?, ?, ?)
-                            """,
+                        results_buffer.append(
                             (
                                 result.data_num1,
                                 result.data_num2,
                                 result.distance,
                                 result.path_quality,
                                 result.path_smoothness,
-                            ),
+                            )
                         )
-                        conn.commit()
+                        batch_count += 1
+
+                        if batch_count >= 1000:
+                            conn.executemany(
+                                """
+                                INSERT INTO results 
+                                (data_num1, data_num2, distance, path_quality, path_smoothness)
+                                VALUES (?, ?, ?, ?, ?)
+                                """,
+                                results_buffer,
+                            )
+                            conn.commit()
+                            batch_count = 0
+                            results_buffer = []
+
                         self.result_queue.task_done()
                 except Empty:
-                    pass
+                    # バッファに残っているデータがあれば書き込む
+                    if results_buffer:
+                        conn.executemany(
+                            """
+                            INSERT INTO results 
+                            (data_num1, data_num2, distance, path_quality, path_smoothness)
+                            VALUES (?, ?, ?, ?, ?)
+                            """,
+                            results_buffer,
+                        )
+                        conn.commit()
+                        batch_count = 0
+                        results_buffer = []
 
                 # エラーログの書き込み
                 try:
