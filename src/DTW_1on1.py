@@ -5,6 +5,8 @@ import numpy as np
 from natsort import natsorted
 from pydantic import BaseModel
 
+from DTW import dtw
+
 plt.rcParams["font.size"] = 14
 plt.rcParams["font.family"] = "TeX Gyre Termes"
 
@@ -36,90 +38,6 @@ def load_data(data_file: pathlib.Path) -> list[StoneData]:
             )
 
     return data
-
-
-def dtw(
-    data1: np.ndarray, data2: np.ndarray
-) -> tuple[float, np.ndarray, np.ndarray, np.floating, np.floating]:
-    # コスト行列の初期化
-    n = len(data1)
-    m = len(data2)
-
-    cost = np.zeros((n, m))
-
-    # 各点の距離を計算
-    for i in range(n):
-        for j in range(m):
-            cost[i, j] = np.linalg.norm(data1[i] - data2[j])
-
-    # 累積コスト行列の初期化
-    accumulated_cost = np.full((n, m), np.inf)
-    accumulated_cost[0, 0] = cost[0, 0]
-
-    # 累積コストの計算
-    for i in range(1, n):
-        accumulated_cost[i, 0] = accumulated_cost[i - 1, 0] + cost[i, 0]
-
-    for j in range(1, m):
-        accumulated_cost[0, j] = accumulated_cost[0, j - 1] + cost[0, j]
-
-    for i in range(1, n):
-        for j in range(1, m):
-            accumulated_cost[i, j] = cost[i, j] + min(
-                accumulated_cost[i - 1, j],
-                accumulated_cost[i, j - 1],
-                accumulated_cost[i - 1, j - 1],
-            )
-
-    # バックトレースで最適パスを求める
-    i = n - 1
-    j = m - 1
-    path = [(i, j)]
-
-    while i > 0 or j > 0:
-        if i == 0:
-            j -= 1
-        elif j == 0:
-            i -= 1
-        else:
-            if accumulated_cost[i - 1, j] == min(
-                accumulated_cost[i - 1, j],
-                accumulated_cost[i, j - 1],
-                accumulated_cost[i - 1, j - 1],
-            ):
-                i -= 1
-            elif accumulated_cost[i, j - 1] == min(
-                accumulated_cost[i - 1, j],
-                accumulated_cost[i, j - 1],
-                accumulated_cost[i - 1, j - 1],
-            ):
-                j -= 1
-            else:
-                i -= 1
-                j -= 1
-
-        path.append((i, j))
-
-    path.reverse()
-
-    # distanceを正規化
-    distance = accumulated_cost[-1, -1] / (n + m)
-
-    # マッチングの局所的な質を評価
-    path_quality = np.mean([np.linalg.norm(data1[i] - data2[j]) for i, j in path])
-
-    # 連続するマッチング間の滑らかさ
-    path_smoothness = np.mean(
-        [
-            abs(
-                np.linalg.norm(data1[i1] - data2[j1])
-                - np.linalg.norm(data1[i2] - data2[j2])
-            )
-            for (i1, j1), (i2, j2) in zip(path[:-1], path[1:])
-        ]
-    )
-
-    return distance, np.array(path), accumulated_cost, path_quality, path_smoothness
 
 
 def test():
@@ -219,9 +137,12 @@ if __name__ == "__main__":
 
     data_files = natsorted(list(data_dir.glob("*.csv")))
 
+    data1_num = 404
+    data2_num = 500
+
     # get 2 data
-    data1 = load_data(data_files[404])
-    data2 = load_data(data_files[404])
+    data1 = load_data(data_files[data1_num])
+    data2 = load_data(data_files[data2_num])
 
     # x,y
     data1_xy = np.array([[d.x, d.y] for d in data1])
@@ -311,4 +232,4 @@ if __name__ == "__main__":
 
     plt.tight_layout()
 
-    plt.savefig("output.png")
+    plt.savefig(f"output/1on1_{data1_num}_{data2_num}.png")

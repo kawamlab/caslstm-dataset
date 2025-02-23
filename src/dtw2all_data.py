@@ -9,7 +9,7 @@ import numpy as np
 from pydantic import BaseModel
 from tqdm import tqdm
 
-from dtw import dtw
+from DTW import dtw
 
 
 class StoneData(BaseModel):
