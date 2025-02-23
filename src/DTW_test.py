@@ -17,15 +17,6 @@ class StoneData(BaseModel):
     omega: float
 
 
-class ResultData(BaseModel):
-    data_num1: int
-    data_num2: int
-
-    distance: float
-    path_quality: float
-    path_smoothness: float
-
-
 def load_data(data_file: pathlib.Path) -> list[StoneData]:
     data = []
     # utf-8 with BOM
@@ -228,90 +219,96 @@ if __name__ == "__main__":
 
     data_files = natsorted(list(data_dir.glob("*.csv")))
 
-    data = [load_data(data_file) for data_file in data_files]
-    trajectories = [np.array([[d.x, d.y] for d in trajectory]) for trajectory in data]
+    # get 2 data
+    data1 = load_data(data_files[404])
+    data2 = load_data(data_files[404])
 
-    n_datasets = len(data_files)
-    print(f"Number of datasets: {n_datasets}")
+    # x,y
+    data1_xy = np.array([[d.x, d.y] for d in data1])
 
-    # 各指標の行列を初期化
-    distances = np.zeros((n_datasets, n_datasets))
-    path_qualities = np.zeros((n_datasets, n_datasets))
-    path_smoothnesses = np.zeros((n_datasets, n_datasets))
+    # data2をすこしずらしてみる
+    data2_xy = np.array([[d.x, d.y] for d in data2])
+    data2_xy[:, 0] += 1
 
-    paths = {}  # 特徴的なペアのパスのみ保存する場合
-    accumulated_costs = {}  # 特徴的なペアの累積コスト行列のみ保存する場合
+    # data2_xyのYを反転
+    data2_xy = np.array([[-d.x, d.y] for d in data2])
 
-    results = []
+    # # サンプルデータとして、sin波の2次元座標を生成
+    # # [x, y] = [x, sin(x)]
 
-    # 10回だけテスト
-    # for i in range(1):
-    for i in range(n_datasets):
-        for j in range(i + 1, n_datasets):  # 対称行列なので半分だけ計算
-            data_1 = load_data(data_files[i])
-            data_2 = load_data(data_files[j])
+    # x = np.linspace(0, 6.28, num=100)
+    # y = np.sin(x) + np.random.uniform(size=100) / 10.0
+    # data1_xy = np.array([x, y]).T
 
-            distance, path, accumulated_cost, path_quality, path_smoothness = dtw(
-                trajectories[i], trajectories[j]
-            )
+    # # [x, y] = [x, cos(x)]
+    # y = np.cos(x)
+    # data2_xy = np.array([x, y]).T
 
-            result = ResultData(
-                data_num1=i,
-                data_num2=j,
-                distance=distance,
-                path_quality=float(path_quality),
-                path_smoothness=float(path_smoothness),
-            )
+    # # サンプル軌跡データの生成
+    # # 軌跡1: 円形に近い形
+    # t1 = np.linspace(0, 2 * np.pi, 50)
+    # x1 = np.cos(t1) + np.random.normal(0, 0.1, 50)
+    # y1 = np.sin(t1) + np.random.normal(0, 0.1, 50)
+    # data1_xy = np.column_stack((x1, y1))
 
-            results.append(result)
+    # # 軌跡2: 同様の円形だが、ポイント数が異なり、若干歪んでいる
+    # t2 = np.linspace(0, 2 * np.pi, 40)
+    # x2 = 1.2 * np.cos(t2) + 0.2 * np.sin(2 * t2) + np.random.normal(0, 0.1, 40)
+    # y2 = 1.1 * np.sin(t2) + 0.1 * np.cos(2 * t2) + np.random.normal(0, 0.1, 40)
+    # data2_xy = np.column_stack((x2, y2))
 
-            # # 特徴的なペアの場合のみパスと累積コスト行列を保存
-            # if distance < threshold:  # または他の条件
-            #     paths[(i, j)] = path
-            #     accumulated_costs[(i, j)] = acc_cost
+    distance, path, accumulated_cost, path_quality, path_smoothness = dtw(
+        data1_xy, data2_xy
+    )
 
-            # 進捗表示(100回に1回)
-            if (i * n_datasets + j) % 100 == 0:
-                print(f"Dataset {i + 1}/{n_datasets}, Pair {j + 1}/{n_datasets}")
+    # 評価指標の表示
+    print(f"正規化DTW距離: {distance:.4f}")
+    print(f"パスの品質（平均マッチング距離）: {path_quality:.4f}")
+    print(f"パスの滑らかさ: {path_smoothness:.4f}")
 
-    result_path = root_dir / "results.csv"
-
-    with open(result_path, "w") as f:
-        f.write("data_num1,data_num2,distance,path_quality,path_smoothness\n")
-        for result in results:
-            f.write(
-                f"{result.data_num1},{result.data_num2},{result.distance},{result.path_quality},{result.path_smoothness}\n"
-            )
-
-    exit()
-
+    # 結果の可視化
     plt.figure(figsize=(15, 5))
 
-    # DTW距離の分布
+    # 軌跡の比較プロット
     plt.subplot(131)
-    plt.hist(distances.flatten(), bins=50)
-    plt.title("DTW Distance Distribution")
+    plt.plot(data1_xy[:, 0], data1_xy[:, 1], "b-", label="Trajectory 1")
+    plt.plot(data2_xy[:, 0], data2_xy[:, 1], "r-", label="Trajectory 2")
+    plt.title("Trajectories Comparison")
+    plt.legend()
+    plt.grid(True)
+    plt.axis("equal")
 
-    # パス品質の分布
+    # 累積コスト行列とワーピングパス
     plt.subplot(132)
-    plt.hist(path_qualities.flatten(), bins=50)
-    plt.title("Path Quality Distribution")
+    plt.imshow(accumulated_cost, origin="lower", cmap="viridis", aspect="equal")
+    plt.colorbar(label="Accumulated Cost")
+    plt.plot(
+        [0, min(accumulated_cost.shape)],
+        [0, min(accumulated_cost.shape)],
+        "k--",
+        alpha=0.5,
+        label="Diagonal",
+    )
+    plt.plot(path[:, 1], path[:, 0], "r-", linewidth=2, label="Warping Path")
+    plt.title("Accumulated Cost Matrix & Warping Path")
+    plt.xlabel("Trajectory 2 Index")
+    plt.ylabel("Trajectory 1 Index")
 
-    # パスの滑らかさの分布
+    # マッチング結果
     plt.subplot(133)
-    plt.hist(path_smoothnesses.flatten(), bins=50)
-    plt.title("Path Smoothness Distribution")
+    plt.plot(data1_xy[:, 0], data1_xy[:, 1], "b-", label="Trajectory 1")
+    plt.plot(data2_xy[:, 0], data2_xy[:, 1], "r-", label="Trajectory 2")
+    # いくつかの代表的なマッチングを表示
+    for idx in range(0, len(path), 5):
+        i, j = path[idx]
+        plt.plot(
+            [data1_xy[i, 0], data2_xy[j, 0]], [data1_xy[i, 1], data2_xy[j, 1]], "k-"
+        )
+    plt.title("Matching Results")
+    plt.legend()
+    plt.grid(True)
+    plt.axis("equal")
 
     plt.tight_layout()
-    plt.savefig("output.png")
 
-    for name, data in [
-        ("DTW Distance", distances),
-        ("Path Quality", path_qualities),
-        ("Path Smoothness", path_smoothnesses),
-    ]:
-        print(f"\n{name}:")
-        print(f"Mean: {np.mean(data):.4f}")
-        print(f"Std: {np.std(data):.4f}")
-        print(f"Min: {np.min(data):.4f}")
-        print(f"Max: {np.max(data):.4f}")
+    plt.savefig("output.png")

@@ -3,7 +3,7 @@ import sqlite3
 import threading
 from datetime import datetime
 from queue import Queue, Empty
-from typing import List, Optional
+from typing import List, Optional, Set, Tuple
 
 import numpy as np
 from pydantic import BaseModel
@@ -84,6 +84,15 @@ class ParallelDTW:
             with open(self.error_log_path, "w") as f:
                 f.write("timestamp,data_num1,data_num2,error_message\n")
 
+    def load_completed_pairs(self) -> Set[Tuple[int, int]]:
+        """計算済みのペアを読み込む"""
+        completed_pairs = set()
+        with sqlite3.connect(self.db_path) as conn:
+            cursor = conn.execute("SELECT data_num1, data_num2 FROM results")
+            for row in cursor:
+                completed_pairs.add((row[0], row[1]))
+        return completed_pairs
+
     def load_data(self) -> int:
         """データの読み込みと前処理"""
         data_files = sorted(self.data_dir.glob("*.csv"))
@@ -117,9 +126,26 @@ class ParallelDTW:
 
     def generate_work_items(self, n_datasets: int):
         """ワークアイテムの生成とキューへの投入"""
+        # 計算済みのペアを取得
+        completed_pairs = self.load_completed_pairs()
+
+        # 総組み合わせ数を計算
+        total_pairs = n_datasets * (n_datasets - 1) // 2
+
+        # 未計算のペアのみをキューに投入
+        remaining_pairs = 0
         for i in range(n_datasets):
             for j in range(i + 1, n_datasets):
-                self.work_queue.put(WorkItem(trajectory_idx1=i, trajectory_idx2=j))
+                if (i, j) not in completed_pairs:
+                    self.work_queue.put(WorkItem(trajectory_idx1=i, trajectory_idx2=j))
+                    remaining_pairs += 1
+
+        print(f"Total pairs: {total_pairs}")
+        print(f"Completed pairs: {len(completed_pairs)}")
+        print(f"Remaining pairs: {remaining_pairs}")
+
+        # 残りのペア数で total_combinations を更新
+        self.total_combinations = remaining_pairs
 
     def worker_function(self, worker_id: int):
         """ワーカースレッドのメイン関数"""
@@ -201,19 +227,21 @@ class ParallelDTW:
 
                         self.result_queue.task_done()
                 except Empty:
-                    # バッファに残っているデータがあれば書き込む
-                    if results_buffer:
-                        conn.executemany(
-                            """
-                            INSERT INTO results 
-                            (data_num1, data_num2, distance, path_quality, path_smoothness)
-                            VALUES (?, ?, ?, ?, ?)
-                            """,
-                            results_buffer,
-                        )
-                        conn.commit()
-                        batch_count = 0
-                        results_buffer = []
+                    pass
+                    # # バッファに残っているデータがあれば書き込む
+                    # print(f"Writing {len(results_buffer)} results")
+                    # if results_buffer:
+                    #     conn.executemany(
+                    #         """
+                    #         INSERT INTO results
+                    #         (data_num1, data_num2, distance, path_quality, path_smoothness)
+                    #         VALUES (?, ?, ?, ?, ?)
+                    #         """,
+                    #         results_buffer,
+                    #     )
+                    #     conn.commit()
+                    #     batch_count = 0
+                    #     results_buffer = []
 
                 # エラーログの書き込み
                 try:
