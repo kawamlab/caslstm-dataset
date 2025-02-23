@@ -117,16 +117,18 @@ def plot_comprehensive_analysis(
     fig = plt.figure(figsize=(20, 12))
     gs = GridSpec(3, 3, figure=fig)
 
-    # 軌跡比較プロット
+    # 軌跡比較プロット（X-Y軸入れ替え）
     ax_traj = fig.add_subplot(gs[0, 0])
-    ax_traj.plot(data1_xy[:, 0], data1_xy[:, 1], "b-", label=f"Seq {data1_num}")
-    ax_traj.plot(data2_xy[:, 0], data2_xy[:, 1], "r-", label=f"Seq {data2_num}")
+    ax_traj.plot(data1_xy[:, 1], data1_xy[:, 0], "b-", label=f"Seq {data1_num}")
+    ax_traj.plot(data2_xy[:, 1], data2_xy[:, 0], "r-", label=f"Seq {data2_num}")
     ax_traj.set_title("Trajectories Comparison")
+    ax_traj.set_xlabel("y [m]")
+    ax_traj.set_ylabel("x [m]")
     ax_traj.legend()
     ax_traj.grid(True)
     ax_traj.axis("equal")
 
-    # 累積コスト行列とワーピングパス
+    # 累積コスト行列とワーピングパス（同じ）
     ax_cost = fig.add_subplot(gs[0, 1])
     im = ax_cost.imshow(
         accumulated_cost, origin="lower", cmap="viridis", aspect="equal"
@@ -144,22 +146,31 @@ def plot_comprehensive_analysis(
     ax_cost.set_xlabel("Trajectory 2 Index")
     ax_cost.set_ylabel("Trajectory 1 Index")
 
-    # マッチング結果
+    # マッチング結果（X-Y軸入れ替え）
     ax_match = fig.add_subplot(gs[0, 2])
-    ax_match.plot(data1_xy[:, 0], data1_xy[:, 1], "b-", label=f"Seq {data1_num}")
-    ax_match.plot(data2_xy[:, 0], data2_xy[:, 1], "r-", label=f"Seq {data2_num}")
+    ax_match.plot(data1_xy[:, 1], data1_xy[:, 0], "b-", label=f"Seq {data1_num}")
+    ax_match.plot(data2_xy[:, 1], data2_xy[:, 0], "r-", label=f"Seq {data2_num}")
     for idx in range(0, len(path), 5):
         i, j = path[idx]
         ax_match.plot(
-            [data1_xy[i, 0], data2_xy[j, 0]],
             [data1_xy[i, 1], data2_xy[j, 1]],
+            [data1_xy[i, 0], data2_xy[j, 0]],
             "k-",
             alpha=0.3,
         )
     ax_match.set_title("Matching Results")
+    ax_match.set_xlabel("y [m]")
+    ax_match.set_ylabel("x [m]")
     ax_match.legend()
     ax_match.grid(True)
     ax_match.axis("equal")
+
+    # Y軸の範囲を調整（必要に応じて）
+    y_min = min(np.min(data1_xy[:, 0]), np.min(data2_xy[:, 0]))
+    y_max = max(np.max(data1_xy[:, 0]), np.max(data2_xy[:, 0]))
+    y_range = y_max - y_min
+    ax_traj.set_ylim(y_min - y_range * 0.1, y_max + y_range * 0.1)
+    ax_match.set_ylim(y_min - y_range * 0.1, y_max + y_range * 0.1)
 
     # 速度プロフィール
     ax_vel = fig.add_subplot(gs[1, 0])
